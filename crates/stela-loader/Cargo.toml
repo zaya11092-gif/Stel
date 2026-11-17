@@ -15,6 +15,9 @@ default = ["std"]
 # image: stela-boot's `amdgpu` and stela-cli's `amdgpu-port` turn it on, and
 # a test keeps those lists one.
 amdgpu-port = []
+# The Intel GPU port's firmware in the bundle, off by default as xe is in
+# the boot image: stela-boot's `xe` and stela-cli's `xe-port` turn it on.
+xe-port = []
 # Without `std` only the kernel boot-bundle builder (`boot_bundle` and the
 # formats it reads) is built, for `stela.efi`.
 std = ["stela-soc-data/std",

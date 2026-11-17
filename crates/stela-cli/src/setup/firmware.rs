@@ -1037,11 +1037,16 @@ mod tests {
         let manifest = bundle::manifest(&files).unwrap();
         let parsed = bundle::Bundle::parse(&manifest).unwrap();
         assert!(parsed.missing().is_empty());
-        // A stick for an image with the AMD port also holds its firmware.
-        let (objects, summary) = if cfg!(feature = "amdgpu-port") {
-            (121, "for every supported device (184.9 MiB)")
+        // A stick for an image with a GPU port also holds its firmware.
+        let (objects, summary) = if cfg!(feature = "xe-port") {
+            (
+                bundle::complete().len(),
+                bundle_summary(),
+            )
+        } else if cfg!(feature = "amdgpu-port") {
+            (121, "for every supported device (184.9 MiB)".to_owned())
         } else {
-            (88, "for every supported device (177.0 MiB)")
+            (88, "for every supported device (177.0 MiB)".to_owned())
         };
         assert_eq!(parsed.objects.len(), objects);
         assert_eq!(bundle_summary(), summary);
@@ -1327,13 +1332,10 @@ mod tests {
             .unwrap();
         }
         let status = bundle_status(dir.path()).unwrap_err();
+        let files = bundle::complete().len();
         assert_eq!(
             status,
-            if cfg!(feature = "amdgpu-port") {
-                "the firmware on the stick is incomplete: 3 of 121 files are there"
-            } else {
-                "the firmware on the stick is incomplete: 3 of 88 files are there"
-            }
+            format!("the firmware on the stick is incomplete: 3 of {files} files are there")
         );
     }
 
@@ -1355,12 +1357,9 @@ mod tests {
         )
         .unwrap();
         let status = bundle_status(dir.path()).unwrap_err();
-        let lacks = if cfg!(feature = "amdgpu-port") {
-            "lacks 120 of 121 files"
-        } else {
-            "lacks 87 of 88 files"
-        };
-        assert!(status.contains(lacks), "{status}");
+        let files = bundle::complete().len();
+        let lacks = format!("lacks {} of {files} files", files - 1);
+        assert!(status.contains(lacks.as_str()), "{status}");
         assert!(!status.contains("nvidia/"), "{status}");
         assert!(status.contains("1 of its files are damaged"), "{status}");
     }

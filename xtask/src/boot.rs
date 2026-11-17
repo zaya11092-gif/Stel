@@ -124,12 +124,18 @@ pub enum Command {
         /// Carry amdgpu beside nouveau and the image's Mesa drivers, for a
         /// Radeon RX 9070 (Navi 48) or RX 6800-6950 XT (Navi 21): amdgpu
         /// binds it in the Linux environment.
-        #[arg(long, conflicts_with = "radv")]
+        #[arg(long, conflicts_with_all = ["radv", "anv"])]
         amdgpu: bool,
         /// Carry amdgpu and require RADV among the image's Mesa drivers:
         /// amdgpu binds the GPU and RADV backs the Metal device over it.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "anv")]
         radv: bool,
+        /// Carry xe and require ANV among the image's Mesa drivers: xe
+        /// binds the GPU and ANV backs the Metal device over it, for the
+        /// Intel GPUs xe's table holds, Tiger Lake and later, the Alder
+        /// Lake P Iris Xe of an i7-1265U among them.
+        #[arg(long)]
+        anv: bool,
     },
     /// Boot `stela.efi` with an ARM image in x86 QEMU.
     Run(Box<Run>),
@@ -503,6 +509,7 @@ pub fn run(command: Command) -> Result<ExitCode> {
             diagnostics,
             amdgpu,
             radv,
+            anv,
         } => {
             crate::gpu::fetch::fetch(false)?;
             crate::gpu::build_nvk(crate::gpu::default_jobs())?;
@@ -511,6 +518,9 @@ pub fn run(command: Command) -> Result<ExitCode> {
                 Gpu::Radv
             } else if amdgpu {
                 Gpu::Amdgpu
+            } else if anv {
+                crate::gpu::require_vulkan_driver("intel")?;
+                Gpu::Anv
             } else {
                 Gpu::Nvk
             };
@@ -538,6 +548,8 @@ enum Gpu {
     Amdgpu,
     /// amdgpu with RADV, ACO and NIR among the image's Mesa drivers.
     Radv,
+    /// xe with ANV, BRW and NIR among the image's Mesa drivers.
+    Anv,
 }
 
 fn build_for_boot(release: bool, diagnostics: bool, gpu: Gpu) -> Result<PathBuf> {
@@ -586,6 +598,9 @@ fn build_with_diagnostics(release: bool, diagnostics: bool, gpu: Gpu) -> Result<
         }
         Gpu::Radv => {
             command.args(["--features", "radv"]);
+        }
+        Gpu::Anv => {
+            command.args(["--features", "anv"]);
         }
     }
     if release {

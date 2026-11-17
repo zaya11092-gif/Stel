@@ -110,8 +110,8 @@ impl Adapter {
             Vendor::Nvidia => "NVIDIA requires nouveau/GSP binding and an NVK-enabled image",
             Vendor::Amd => "AMDGPU is not ported to Stela",
             Vendor::Intel => {
-                "it needs Linux's i915 driver, which Stela does not have: its xe driver runs \
-                 Tiger Lake and later"
+                "this image binds no Intel GPU: its xe driver, for Tiger Lake and later, is not \
+                 built in, and Ice Lake and older need Linux's i915, which Stela does not have"
             }
             Vendor::Other(_) => "no Stela GPU backend for this PCI vendor",
         }

@@ -35,9 +35,15 @@ native-profile = ["stela-soc/native-profile", "stela-engine/native-profile"]
 nvk = ["dep:stela-mesa", "stela-drivers/metal-linked"]
 # amdgpu in the image's Linux environment, for the AMD GPUs its table holds.
 amdgpu = ["stela-drivers/amdgpu-port", "stela-loader/amdgpu-port"]
+# xe in the image's Linux environment, for the Intel GPUs its table holds,
+# Tiger Lake and later: the Alder Lake P Iris Xe of an i7-1265U among them.
+xe = ["stela-drivers/xe-port", "stela-loader/xe-port"]
 # amdgpu with RADV, NIR and ACO among the Mesa drivers `cargo xtask gpu nvk`
 # builds, which back the Metal device on the GPU amdgpu binds.
 radv = ["nvk", "amdgpu", "stela-drivers/radv"]
+# xe with ANV, BRW and NIR among the Mesa drivers `cargo xtask gpu nvk`
+# builds, which back the Metal device on the GPU xe binds.
+anv = ["nvk", "xe"]
 
 [dependencies]
 stela-linux = { path = "../stela-linux", features = ["kernel"] }

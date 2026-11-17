@@ -24,13 +24,30 @@ fn the_complete_bundle_holds_every_recipe_once_by_content() {
     // of Navi 21.
     if Ports::BUILT == Ports::ALL {
         assert_eq!(count + 4, recipes().count());
-        // The recipes' recorded lengths: 121 files, 184.9 MiB.
-        assert_eq!((count, bytes), (121, 193_887_456), "{count} {bytes}");
+        // The recipes' recorded lengths: 149 files, 194.8 MiB.
+        assert_eq!((count, bytes), (149, 204_290_704), "{count} {bytes}");
     }
     if Ports::BUILT == Ports::NONE {
         assert_eq!(count + 2, recipes().count());
-        // Without the AMD port: 88 files, 177.0 MiB.
+        // Without the GPU ports: 88 files, 177.0 MiB.
         assert_eq!((count, bytes), (88, 185_584_904), "{count} {bytes}");
+    }
+    // One port alone, as a build with only one of the two carries it.
+    if Ports::BUILT == (Ports {
+        amd: true,
+        intel: false,
+    }) {
+        assert_eq!(count + 4, recipes().count());
+        // With the AMD port alone: 121 files, 184.9 MiB.
+        assert_eq!((count, bytes), (121, 193_887_456), "{count} {bytes}");
+    }
+    if Ports::BUILT == (Ports {
+        amd: false,
+        intel: true,
+    }) {
+        assert_eq!(count + 2, recipes().count());
+        // With the Intel port alone: 116 files, 186.9 MiB.
+        assert_eq!((count, bytes), (116, 195_988_152), "{count} {bytes}");
     }
     // The GPU's large images come last, for a volume short of room.
     assert_eq!(objects.last().unwrap().length, 64_116_464);
@@ -237,6 +254,32 @@ fn a_boot_selects_exactly_the_files_its_pci_functions_need() {
 }
 
 #[test]
+fn an_intel_igp_selects_the_files_its_platforms_xe_binds() {
+    // The Alder Lake P Iris Xe of an i7-1265U, with a non-display Intel
+    // function beside it.
+    let igp = select_for(
+        &[pci(0x8086, 0x46a6, 0x03), pci(0x8086, 0x51c8, 0x04)],
+        Ports::ALL,
+    );
+    let mut inventory = Inventory::default();
+    recipes::require_xe(&mut inventory, 0x46a6).unwrap();
+    let mut expected: Vec<&str> = USB.to_vec();
+    expected.extend(
+        inventory
+            .requests()
+            .iter()
+            .map(|request| request.name.as_str()),
+    );
+    expected.sort_unstable();
+    assert_eq!(members(&igp), expected);
+    assert!(igp.unknown.is_empty());
+    // An Intel display chip no platform of xe's pins files for is named once.
+    let old = select_for(&[pci(0x8086, 0x0042, 0x03)], Ports::ALL);
+    assert_eq!(old.unknown, ["pci 8086:0042"]);
+    assert_eq!(members(&old), USB);
+}
+
+#[test]
 fn the_handoff_manifest_keeps_an_older_per_pc_manifest_beside_bundle_files() {
     let older = serde_json::to_vec(&serde_json::json!({"schema":1,"images":[{
         "name":"rtl_nic/rtl8168e-3.fw", "path":"0.bin",
@@ -388,10 +431,11 @@ fn an_exact_binding_wins_over_the_bundle() {
     assert_eq!(image.bytes(), b"abcd");
 }
 
-/// The AMD port named in a Cargo.toml line's feature list.
+/// The GPU ports named in a Cargo.toml line's feature list.
 fn ports_of(line: &str) -> Ports {
     Ports {
         amd: line.contains("amdgpu-port\""),
+        intel: line.contains("xe-port\""),
     }
 }
 
@@ -421,6 +465,12 @@ fn the_boot_images_drivers_and_the_bundle_name_the_same_gpu_ports() {
     assert!(amdgpu.contains("\"stela-loader/amdgpu-port\""), "{amdgpu}");
     let port = line(cli, "amdgpu-port = ");
     assert!(port.contains("\"stela-loader/amdgpu-port\""), "{port}");
+    // The same for xe, whose boot feature is named after the driver.
+    let xe = line(boot, "xe = ");
+    assert!(xe.contains("\"stela-drivers/xe-port\""), "{xe}");
+    assert!(xe.contains("\"stela-loader/xe-port\""), "{xe}");
+    let port = line(cli, "xe-port = ");
+    assert!(port.contains("\"stela-loader/xe-port\""), "{port}");
 }
 
 #[test]
@@ -460,5 +510,49 @@ fn a_build_without_the_amd_port_bundles_none_of_its_firmware() {
     assert_eq!(
         objects().iter().any(|artifact| theirs(artifact.member)),
         Ports::BUILT.amd
+    );
+}
+
+#[test]
+fn a_build_without_the_intel_port_bundles_none_of_its_firmware() {
+    let theirs =
+        |member: &str| member.starts_with("i915/") || member.starts_with("xe/");
+    let without_port = objects_for(Ports::NONE);
+    assert!(!without_port.is_empty());
+    assert!(without_port.iter().all(|artifact| !theirs(artifact.member)));
+    assert!(
+        families_for(Ports::NONE)
+            .flat_map(|(_, recipes)| recipes.iter())
+            .all(|recipe| {
+                let license = recipe.license.member;
+                !(license.ends_with("LICENSE.i915") || license.ends_with("LICENSE.xe"))
+            })
+    );
+    // Its GPUs select nothing; the rest is as with the port.
+    let functions = [pci(0x8086, 0x46a6, 3), pci(0x10de, 0x2c02, 3)];
+    let without = select_for(&functions, Ports::NONE);
+    assert!(
+        without
+            .wanted
+            .iter()
+            .all(|(artifact, _)| !theirs(artifact.member))
+    );
+    assert!(without.unknown.is_empty());
+    assert!(
+        without
+            .wanted
+            .iter()
+            .any(|(artifact, _)| artifact.member.starts_with("nvidia/"))
+    );
+    let with = select_for(&functions, Ports::ALL);
+    assert!(
+        with.wanted
+            .iter()
+            .any(|(artifact, _)| theirs(artifact.member))
+    );
+    // This build's bundle holds them exactly when it has the port.
+    assert_eq!(
+        objects().iter().any(|artifact| theirs(artifact.member)),
+        Ports::BUILT.intel
     );
 }

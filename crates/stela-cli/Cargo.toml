@@ -20,6 +20,10 @@ path = "src/main.rs"
 # built with amdgpu (`cargo xtask boot build --amdgpu` or `--radv`); a
 # release leaves both out.
 amdgpu-port = ["stela-loader/amdgpu-port"]
+# The Intel GPU port's firmware on the sticks `stela` makes, for a boot
+# image built with xe (`cargo xtask boot build --anv`); a release leaves it
+# out.
+xe-port = ["stela-loader/xe-port"]
 
 [dependencies]
 stela-gpu-maintenance.workspace = true

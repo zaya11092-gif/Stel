@@ -182,10 +182,10 @@ const AMD_VULKAN: Option<crate::metal::native::Driver> = Some(crate::metal::amd:
 ))]
 const AMD_VULKAN: Option<crate::metal::native::Driver> = None;
 
-/// xe with the display code it shares with i915, and ANV's admission. Its
-/// Vulkan driver is not given yet, even in an image that holds ANV: ANV has
-/// run on no Intel GPU under Stela. Until then its GPU shows the frames
-/// another GPU draws, on the displays wired to it.
+/// xe with the display code it shares with i915, and ANV's admission. ANV,
+/// with BRW, backs the Metal device in an image whose Mesa build linked it
+/// ([`INTEL_VULKAN`]); in any other its GPU shows the frames another GPU
+/// draws, on the displays wired to it.
 #[cfg(feature = "xe-port")]
 pub static INTEL: GpuStack = GpuStack {
     vendor: Vendor::Intel,
@@ -207,8 +207,31 @@ pub static INTEL: GpuStack = GpuStack {
     #[cfg(feature = "metal")]
     metal: Some(crate::metal::intel::ADMISSION),
     #[cfg(all(feature = "metal-linked", not(test)))]
-    vulkan: None,
+    vulkan: INTEL_VULKAN,
 };
+
+/// ANV, in an image whose Mesa build linked the Intel driver (`cargo xtask
+/// gpu nvk` lists `intel` beside the archive), with its driver-internal NIR
+/// options hook (`compat/mesa/anv_nir_options.c`). It has neither of NVK's
+/// driver-internal hooks, so it gets [`crate::metal::native::Driver`]'s
+/// documented fallbacks: a commit's submission runs on the caller, and a
+/// refused submission loses the device. An image whose build host lacked
+/// the tools ANV's build runs holds no ANV, and then no driver here.
+#[cfg(all(
+    feature = "xe-port",
+    feature = "metal-linked",
+    not(test),
+    stela_vulkan_intel
+))]
+const INTEL_VULKAN: Option<crate::metal::native::Driver> = Some(crate::metal::intel::DRIVER);
+/// No Vulkan driver: an image whose Mesa build holds no ANV.
+#[cfg(all(
+    feature = "xe-port",
+    feature = "metal-linked",
+    not(test),
+    not(stela_vulkan_intel)
+))]
+const INTEL_VULKAN: Option<crate::metal::native::Driver> = None;
 
 /// Brings Linux up and registers every kernel driver built into the image,
 /// stopping at the first stage that fails. Linux then matches each presented
@@ -529,7 +552,8 @@ mod tests {
     #[cfg(feature = "xe-port")]
     #[test]
     fn intel_is_selected_only_for_a_device_of_xes_table_and_draws_nothing() {
-        // Tiger Lake's UHD Graphics, then an ID no table holds.
+        // Tiger Lake's UHD Graphics, then the Alder Lake P Iris Xe of an
+        // i7-1265U, then an ID no table holds.
         let mut tiger_lake = adapter(0x8086);
         tiger_lake.device = 0x9a49;
         let intel = GpuStack::select(&tiger_lake).unwrap();
@@ -540,6 +564,12 @@ mod tests {
         assert!(!intel.draws());
         #[cfg(feature = "metal")]
         assert!(intel.metal.is_some());
+        let mut alder_lake = adapter(0x8086);
+        alder_lake.device = 0x46a6;
+        let iris_xe = GpuStack::select(&alder_lake).unwrap();
+        assert!(core::ptr::eq(iris_xe, &INTEL));
+        assert!((iris_xe.kernel.integrated)(&alder_lake));
+        assert_eq!(iris_xe.kernel.dma_limit(&alder_lake), (1 << 39) - 1);
         let unknown = adapter(0x8086);
         assert_eq!(
             GpuStack::select(&unknown).err(),
