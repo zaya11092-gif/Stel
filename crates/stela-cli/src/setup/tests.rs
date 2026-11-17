@@ -5682,10 +5682,11 @@ fn a_usb_made_without_an_nvidia_gpu_needs_no_firmware_step() {
         lines.push(line);
     }
     assert_eq!(lines[0], lines[1]);
-    let size = if cfg!(feature = "amdgpu-port") {
-        "184.9 MiB"
-    } else {
-        "177.0 MiB"
+    let size = match (cfg!(feature = "amdgpu-port"), cfg!(feature = "xe-port")) {
+        (true, true) => "194.8 MiB",
+        (true, false) => "184.9 MiB",
+        (false, true) => "186.9 MiB",
+        (false, false) => "177.0 MiB",
     };
     assert!(lines[0].contains(size), "{}", lines[0]);
     f.host.nvidia_gpus.borrow_mut().clear();

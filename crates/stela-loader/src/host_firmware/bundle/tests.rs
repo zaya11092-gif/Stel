@@ -33,18 +33,22 @@ fn the_complete_bundle_holds_every_recipe_once_by_content() {
         assert_eq!((count, bytes), (88, 185_584_904), "{count} {bytes}");
     }
     // One port alone, as a build with only one of the two carries it.
-    if Ports::BUILT == (Ports {
-        amd: true,
-        intel: false,
-    }) {
+    if Ports::BUILT
+        == (Ports {
+            amd: true,
+            intel: false,
+        })
+    {
         assert_eq!(count + 4, recipes().count());
         // With the AMD port alone: 121 files, 184.9 MiB.
         assert_eq!((count, bytes), (121, 193_887_456), "{count} {bytes}");
     }
-    if Ports::BUILT == (Ports {
-        amd: false,
-        intel: true,
-    }) {
+    if Ports::BUILT
+        == (Ports {
+            amd: false,
+            intel: true,
+        })
+    {
         assert_eq!(count + 2, recipes().count());
         // With the Intel port alone: 116 files, 186.9 MiB.
         assert_eq!((count, bytes), (116, 195_988_152), "{count} {bytes}");
@@ -515,8 +519,7 @@ fn a_build_without_the_amd_port_bundles_none_of_its_firmware() {
 
 #[test]
 fn a_build_without_the_intel_port_bundles_none_of_its_firmware() {
-    let theirs =
-        |member: &str| member.starts_with("i915/") || member.starts_with("xe/");
+    let theirs = |member: &str| member.starts_with("i915/") || member.starts_with("xe/");
     let without_port = objects_for(Ports::NONE);
     assert!(!without_port.is_empty());
     assert!(without_port.iter().all(|artifact| !theirs(artifact.member)));

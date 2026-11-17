@@ -28,7 +28,7 @@ nouveau-port = ["linux-drm"]
 # image's registrations and AMD's stack its GPUs.
 amdgpu-port = ["linux-drm"]
 # Intel's xe with the display code it shares with i915, compiled unchanged;
-# no boot starts it yet.
+# the boot image's `xe` feature carries it, and its stack's GPUs are xe's.
 xe-port = ["linux-drm"]
 # Stela's Metal device over the internal Vulkan boundary; no Vulkan driver.
 metal = ["dep:stela-contracts"]

@@ -154,8 +154,9 @@ mod tests {
     #[test]
     fn the_table_is_xes_own_sorted_with_each_platforms_mask() {
         assert!(DEVICES.windows(2).all(|pair| pair[0].0 < pair[1].0));
-        // Tiger Lake, Alder Lake P, Raptor Lake P and DG1: 39 bits.
-        for device in [0x9a49, 0x46a6, 0xa7a0, 0x4905] {
+        // Tiger Lake, Alder Lake P (the i7-1265U's Iris Xe among them),
+        // Raptor Lake P and DG1: 39 bits.
+        for device in [0x9a49, 0x46a6, 0x46a8, 0xa7a0, 0x4905] {
             assert_eq!(mask_bits(device), Some(39), "{device:04x}");
         }
         // Arc A-series, Meteor Lake, Lunar Lake and Battlemage: 46 bits.
@@ -173,6 +174,8 @@ mod tests {
         assert_eq!(PLATFORMS.len(), DEVICES.len());
         let name = |device| platform(device).map(|platform| platform.name);
         assert_eq!(name(0x9a49), Some("TIGERLAKE"));
+        // Alder Lake P is the platform of the i7-1265U's Iris Xe 0x46a8.
+        assert_eq!(name(0x46a8), Some("ALDERLAKE_P"));
         // Raptor Lake P is a subplatform of Alder Lake P in xe's table.
         assert_eq!(name(0xa7a0), Some("ALDERLAKE_P"));
         assert_eq!(name(0x56a0), Some("DG2"));
@@ -192,7 +195,7 @@ mod tests {
         for device in [0x4905, 0x56a0, 0x56c0, 0xe20b] {
             assert!(platform(device).unwrap().discrete, "{device:04x}");
         }
-        for device in [0x9a49, 0x46a6, 0x7d55, 0x64a0] {
+        for device in [0x9a49, 0x46a6, 0x46a8, 0x7d55, 0x64a0] {
             assert!(!platform(device).unwrap().discrete, "{device:04x}");
         }
         let adapter = |device| Adapter {

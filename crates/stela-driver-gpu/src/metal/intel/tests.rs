@@ -47,6 +47,49 @@ fn an_integrated_gpu_is_built_in_with_xes_platform_name() {
     assert_eq!(platform.sparse_page_bytes, 64 << 10);
 }
 
+/// ANV's identity of an i7-1265U vPro's Iris Xe Graphics 0x46a8, which xe
+/// binds as Alder Lake P.
+fn iris_xe_1265u() -> Identity {
+    Identity {
+        api_version: (1 << 22) | (4 << 12),
+        driver_id: DriverId::IntelOpenSourceMesa,
+        driver_version: 0,
+        vendor_id: VENDOR_ID,
+        device_id: 0x46a8,
+        pipeline_cache_uuid: [0; 16],
+        device_type: PhysicalDeviceType::IntegratedGpu,
+        device_name: String::from("Intel(R) Iris(R) Xe Graphics (ADL-P GT2)"),
+        conformance_version: [1, 4, 0, 0],
+        pci_bus: None,
+    }
+}
+
+#[test]
+fn a_1265u_iris_xe_is_built_in_alder_lake_p_with_a_display() {
+    let platform = admit_device(&iris_xe_1265u(), 0x46a8, attachment(false)).unwrap();
+    assert_eq!(platform.architecture, "ALDERLAKE_P");
+    assert_eq!(platform.location, DeviceLocation::BuiltIn);
+    assert_eq!(platform.max_transfer_rate, 0);
+    // The iGPU drives the panel, so the Metal device is not headless.
+    assert!(!platform.headless && !platform.removable);
+    assert_eq!(platform.location_number, 1);
+    assert_eq!(
+        (
+            platform.linear_row_alignment,
+            platform.linear_offset_alignment
+        ),
+        (16, 16)
+    );
+    assert_eq!(platform.sparse_page_bytes, 64 << 10);
+    // The same device through the stack's admission.
+    assert_eq!(
+        (ADMISSION.admit)(&iris_xe_1265u(), 0x46a8, attachment(false))
+            .unwrap()
+            .architecture,
+        "ALDERLAKE_P"
+    );
+}
+
 #[test]
 fn a_discrete_gpu_is_in_a_slot_or_external_with_its_link() {
     let mut arc = tiger_lake();

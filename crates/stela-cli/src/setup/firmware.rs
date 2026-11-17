@@ -1039,10 +1039,7 @@ mod tests {
         assert!(parsed.missing().is_empty());
         // A stick for an image with a GPU port also holds its firmware.
         let (objects, summary) = if cfg!(feature = "xe-port") {
-            (
-                bundle::complete().len(),
-                bundle_summary(),
-            )
+            (bundle::complete().len(), bundle_summary())
         } else if cfg!(feature = "amdgpu-port") {
             (121, "for every supported device (184.9 MiB)".to_owned())
         } else {
