@@ -48,8 +48,11 @@ jobs:
 
       - name: Build SPIRV-Tools for LLVM 23
         run: |
-          git clone --depth 1 --branch vulkan-sdk-1.4.363.0 --recursive \
+          git clone --depth 1 --branch vulkan-sdk-1.4.363.0 \
             https://github.com/KhronosGroup/SPIRV-Tools
+          git clone --depth 1 \
+            https://github.com/KhronosGroup/SPIRV-Headers \
+            SPIRV-Tools/external/spirv-headers
           cmake -S SPIRV-Tools -B spirv-tools-build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="$DEPS" \
