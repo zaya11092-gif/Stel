@@ -1,0 +1,103 @@
+# Builds the Stela boot image (stela-deploy.efi) with the Intel xe + ANV
+# path enabled (nvk, xe, anv features) and publishes it as a GitHub release.
+#
+# The image needs a host LLVM 23 (clang, lld, libclang, llvm-config) for
+# every C/C++ compile, Mesa's host tools (mesa_clc, vtn_bindgen2) that need
+# SPIRV-LLVM-Translator and SPIRV-Tools against the same LLVM, and
+# glslangValidator (>= 12.2) for the drivers' GLSL libraries. The pinned
+# Python/meson/ninja and the Rust binding generators install themselves under
+# .tools/gpu at build time, and the Rust toolchain follows rust-toolchain.toml.
+name: Boot image release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/boot-release.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  boot-image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    env:
+      DEPS: ${{ github.workspace }}/host-deps
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Install LLVM 23 and host tools
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
+            | sudo gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/llvm.gpg
+          echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-23 main" \
+            | sudo tee /etc/apt/sources.list.d/llvm-23.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            clang-23 lld-23 llvm-23 llvm-23-dev libclang-23-dev libclang-cpp23 \
+            glslang-tools pkg-config
+          python3 -m pip install --quiet --break-system-packages mako pyyaml packaging
+          /usr/lib/llvm-23/bin/clang --version
+
+      - name: Build SPIRV-Tools for LLVM 23
+        run: |
+          git clone --depth 1 --branch vulkan-sdk-1.4.363.0 --recursive \
+            https://github.com/KhronosGroup/SPIRV-Tools
+          cmake -S SPIRV-Tools -B spirv-tools-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$DEPS" \
+            -DSPIRV_BUILD_TESTS=OFF -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF
+          cmake --build spirv-tools-build -j"$(nproc)"
+          cmake --install spirv-tools-build
+
+      - name: Build SPIRV-LLVM-Translator v23.1.3
+        run: |
+          git clone --depth 1 --branch v23.1.3 \
+            https://github.com/KhronosGroup/SPIRV-LLVM-Translator
+          cmake -S SPIRV-LLVM-Translator -B spirv-translator-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$DEPS" \
+            -DLLVM_DIR=/usr/lib/llvm-23/lib/cmake/llvm \
+            -DLLVM_SPIRV_INCLUDE_TESTS=OFF
+          cmake --build spirv-translator-build -j"$(nproc)"
+          cmake --install spirv-translator-build
+
+      - name: Build the boot image (nvk + xe + anv)
+        run: |
+          export PATH="/usr/lib/llvm-23/bin:$PATH"
+          export PKG_CONFIG_PATH="$DEPS/lib/pkgconfig:/usr/lib/llvm-23/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+          cargo xtask boot build --release --anv
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stela-deploy-efi
+          path: target/boot/x86_64-unknown-uefi/release/stela-deploy.efi
+          if-no-files-found: error
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="intel-xe-anv-r${{ github.run_number }}"
+          gh release create "$tag" \
+            target/boot/x86_64-unknown-uefi/release/stela-deploy.efi \
+            --title "Stela boot image — Intel Iris Xe (Alder Lake P), xe + ANV" \
+            --notes "Boot image built from this repository with the Intel path enabled.
+
+          **What is inside**
+          - \`stela-deploy.efi\`: the boot image (\`nvk\`, \`xe\` and \`anv\` features), so the Metal device on the Intel Iris Xe of an i7-1265U vPro (Alder Lake-P, PCI \`0x46a6\`) is driven by the xe kernel port with Mesa ANV/BRW behind it, beside the usual NVIDIA nouveau + NVK path.
+
+          **How to boot it**
+          1. Format a USB stick FAT32.
+          2. Copy \`stela-deploy.efi\` onto it as \`\\EFI\\BOOT\\BOOTX64.EFI\`.
+          3. Boot the PC from the USB stick (enable UEFI boot / disable Secure Boot).
+
+          For a full macOS installer USB, use the \`stela\` installer flow (README), which writes this image beside the installer payload."
