@@ -104,3 +104,6 @@ jobs:
           3. Boot the PC from the USB stick (enable UEFI boot / disable Secure Boot).
 
           For a full macOS installer USB, use the \`stela\` installer flow (README), which writes this image beside the installer payload."
+
+# Re-run: xe's captured display-parameter unit makes the registry accept the
+# boot's `xe.vbt_firmware` parameter (the GPU-less fatal on system-mode boots).

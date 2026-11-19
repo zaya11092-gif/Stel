@@ -93,9 +93,9 @@ const INITCALLS: UnitSpec = UnitSpec {
     scope: stela_c_build::linux_capture::Scope {
         slice: "gpu",
         group: "amdgpu",
-        group_ordinal: 34,
+        group_ordinal: 35,
         unit_ordinal: 1,
-        global_ordinal: 34,
+        global_ordinal: 35,
     },
     source: "drivers/gpu/drm/amd/amdgpu/amdgpu_drv",
     module: MODULE.name,
@@ -325,6 +325,7 @@ pub fn port(linux: &Linux) -> super::image::Driver {
         name: MODULE.name,
         spec: INITCALLS,
         captured,
+        extra: Vec::new(),
         archive: stela_c_build::linux_build::out_dir().join("libstela-amdgpu.a"),
         open: OPEN,
     }

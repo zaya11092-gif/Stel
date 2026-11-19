@@ -138,6 +138,7 @@ pub fn port(linux: &Linux) -> super::image::Driver {
         name: MODULE.name,
         spec: INITCALLS,
         captured,
+        extra: Vec::new(),
         archive: stela_c_build::linux_build::out_dir().join("libstela-nouveau-nvkm.a"),
         open: OPEN,
     }

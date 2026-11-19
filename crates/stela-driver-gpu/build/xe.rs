@@ -131,6 +131,28 @@ fn initcalls_unit() -> Unit {
     INITCALLS.into()
 }
 
+/// The unit of the display parameters xe shares with i915, compiled with its
+/// registrations captured: the boot's kernel command line names one of them
+/// (`xe.vbt_firmware`, the VBT file that powers the panel's ports), and only
+/// a captured unit's parameters are known to the registry. Its plain
+/// compilation would leave them to the original section emission, which
+/// Stela's environment never reads.
+const PARAMS: UnitSpec = UnitSpec {
+    scope: stela_c_build::linux_capture::Scope {
+        slice: "gpu",
+        group: "xe",
+        group_ordinal: 33,
+        unit_ordinal: 2,
+        global_ordinal: 34,
+    },
+    source: "drivers/gpu/drm/i915/display/intel_display_params",
+    module: MODULE.name,
+    file: MODULE.file,
+};
+fn params_unit() -> Unit {
+    PARAMS.into()
+}
+
 pub fn port(linux: &Linux) -> super::image::Driver {
     let config = Config::parse(&fs::read_to_string(AUTOCONF).expect("read Stela's Kconfig header"))
         .unwrap_or_else(|error| panic!("{AUTOCONF}: {error}"));
@@ -146,7 +168,7 @@ pub fn port(linux: &Linux) -> super::image::Driver {
         .unwrap_or_else(|error| panic!("{error}"))
         .iter()
         .map(|object| source(object))
-        .filter(|source| *source != initcalls_unit().path())
+        .filter(|source| *source != initcalls_unit().path() && *source != params_unit().path())
         .collect::<Vec<_>>();
     assert!(
         kbuild.generated_include && !kbuild.werror,
@@ -209,9 +231,25 @@ pub fn port(linux: &Linux) -> super::image::Driver {
         INITCALLS,
         &placement,
     );
+    let params_placement = initcalls::Placement::new(
+        &params_unit().path(),
+        &stela_c_build::linux_build::out_dir(),
+        &[
+            Path::new("../.."),
+            compiler.parent().expect("compiler root"),
+        ],
+    )
+    .expect("xe display parameters placement");
+    let captured_params = initcalls::compile(
+        &build,
+        Path::new("../stela-linux/src/compat/stela/registration.h"),
+        PARAMS,
+        &params_placement,
+    );
     build
         .objects(objects)
         .object(captured.object())
+        .object(captured_params.object())
         .compile("stela-xe");
     // Hosted programs test the environment and link no driver.
     if env::var("CARGO_CFG_TARGET_OS").is_ok_and(|os| os == "uefi") {
@@ -221,6 +259,7 @@ pub fn port(linux: &Linux) -> super::image::Driver {
         name: MODULE.name,
         spec: INITCALLS,
         captured,
+        extra: vec![(PARAMS, captured_params)],
         archive: stela_c_build::linux_build::out_dir().join("libstela-xe.a"),
         open: OPEN,
     }

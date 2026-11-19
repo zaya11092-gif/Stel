@@ -4,12 +4,12 @@
 //! image and its drivers import that the environment does not supply is
 //! compared with the drivers' lists.
 use super::native::{self, Linux};
-use std::{collections::BTreeSet, env, path::PathBuf};
+use std::{collections::BTreeSet, env, iter::once, path::PathBuf};
 use stela_c_build::linux_capture::{self as initcalls, Captured, Projection, UnitSpec};
 
 /// Ordinals of the image's units after the common cohort: DRM's own level
-/// (its core, helpers and buses) holds 5 to 31, and each driver one from 32
-/// on: nouveau 32, xe 33, amdgpu 34.
+/// (its core, helpers and buses) holds 5 to 31, and each driver its units
+/// from 32 on: nouveau 32, xe 33 and 34 (its display parameters), amdgpu 35.
 pub const FIRST_DRIVER_ORDINAL: u32 = 32;
 
 /// The kernel services a driver's objects import that the environment lacks
@@ -24,7 +24,13 @@ pub struct Driver {
     /// captured.
     pub spec: UnitSpec,
     pub captured: Captured,
-    /// Its objects, with the captured unit's.
+    /// The module's further captured units, each a reviewed source of its
+    /// registrations, in `global_ordinal` order after `spec`'s: e.g. the
+    /// display parameters the boot's kernel command line names. A unit's
+    /// plain compilation would leave its registrations to the original
+    /// section emission, which Stela's environment never reads.
+    pub extra: Vec<(UnitSpec, Captured)>,
+    /// Its objects, with the captured units'.
     pub archive: PathBuf,
     pub open: Open,
 }
@@ -41,9 +47,14 @@ pub fn link(linux: &Linux, mut drivers: Vec<Driver>) {
     );
     let mut captured = linux.captured.clone();
     let environment_count = captured.len();
-    captured.extend(drivers.iter().map(|driver| driver.captured.clone()));
+    captured.extend(drivers.iter().flat_map(|driver| {
+        once(driver.captured.clone())
+            .chain(driver.extra.iter().map(|(_, captured)| captured.clone()))
+    }));
     let mut expected = native::environment_units();
-    expected.extend(drivers.iter().map(|driver| driver.spec));
+    expected.extend(drivers.iter().flat_map(|driver| {
+        once(driver.spec).chain(driver.extra.iter().map(|(spec, _)| *spec))
+    }));
     let image = initcalls::source(
         &captured,
         Projection {
