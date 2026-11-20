@@ -7,6 +7,9 @@
 # glslangValidator (>= 12.2) for the drivers' GLSL libraries. The pinned
 # Python/meson/ninja and the Rust binding generators install themselves under
 # .tools/gpu at build time, and the Rust toolchain follows rust-toolchain.toml.
+#
+# This file's own path is the push trigger (workflow_dispatch exists but the
+# token cannot dispatch), so each rebuild touches the comment above.
 name: Boot image release
 
 on:
