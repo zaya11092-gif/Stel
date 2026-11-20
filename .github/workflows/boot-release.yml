@@ -10,6 +10,7 @@
 #
 # This file's own path is the push trigger (workflow_dispatch exists but the
 # token cannot dispatch), so each rebuild touches the comment above.
+# Rebuild 2026-11-20: kmalloc shim admits every defined GFP policy bit.
 name: Boot image release
 
 on:
