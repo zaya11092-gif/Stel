@@ -9,6 +9,8 @@
  * the separate page-backed public cache service. */
 #include <linux/limits.h>
 #include <linux/gfp.h>
+#include <linux/kernel.h>
+#include <linux/sprintf.h>
 #include <linux/minmax.h>
 #include <linux/overflow.h>
 #include <linux/slab.h>
@@ -77,13 +79,34 @@ static size_t alignment(size_t size)
 
 static bool request_supported(gfp_t flags)
 {
+	/* Every flag bit this kernel defines is inert policy here: the guest
+	 * allocates from one private canonical heap, so zone selection (DMA,
+	 * DMA32), compaction classes (RECLAIMABLE, MOVABLE, COMPOUND), memcg
+	 * charging (ACCOUNT) and the atomic/reclaim reserves have nothing to
+	 * select, compact against or charge. xe's display and GuC bring-up
+	 * passes richer combinations than the CPU drivers did and died on a
+	 * refused GFP bit (boot.log 2026-11-20: one refusal during display
+	 * probe, then an #UD in the system engine). Only bits the kernel does
+	 * not define stay refused, as a tripwire against drifted kernel
+	 * source, and their identity is logged. The two real gates stay:
+	 * sleeping allocation outside the quiescent phase would block the
+	 * native owner, and a nonblocking request needs the canonical heap. */
 	gfp_t allowed = GFP_USER | __GFP_HIGH | __GFP_ZERO | __GFP_NOWARN | __GFP_NOMEMALLOC |
-		__GFP_NORETRY | __GFP_RETRY_MAYFAIL;
-	if (!IS_ENABLED(CONFIG_MEMCG))
-		allowed |= __GFP_ACCOUNT;
+		__GFP_NORETRY | __GFP_RETRY_MAYFAIL | __GFP_ACCOUNT | __GFP_ATOMIC | __GFP_DMA |
+		__GFP_DMA32 | __GFP_RECLAIMABLE | __GFP_MOVABLE | __GFP_COMP | __GFP_MEMALLOC |
+		__GFP_NOFAIL | __GFP_THISNODE;
 	bool quiescent = stela_linux_quiescent();
 	bool may_block = gfpflags_allow_blocking(flags);
-	if ((flags & ~allowed) || (may_block && !quiescent)) {
+	gfp_t unknown = flags & ~allowed;
+	if (unknown) {
+		char reason[80];
+		snprintf(reason, sizeof(reason),
+		         "kmalloc unknown allocation policy bits 0x%x (flags 0x%x)",
+		         unknown, flags);
+		stela_linux_unsupported(reason);
+		return false;
+	}
+	if (may_block && !quiescent) {
 		stela_linux_unsupported("kmalloc allocation policy or context");
 		return false;
 	}
@@ -285,7 +308,8 @@ static unsigned int refusals;
 static void unsupported(void *context, const char *operation)
 {
 	(void)context;
-	assert(!strcmp(operation, "kmalloc allocation policy or context") ||
+	assert(!strncmp(operation, "kmalloc unknown allocation policy bits", 38) ||
+	       !strcmp(operation, "kmalloc allocation policy or context") ||
 	       !strcmp(operation, "kmalloc nonblocking canonical heap unavailable"));
 	refusals++;
 }
@@ -324,10 +348,19 @@ static void policy_and_context(void)
 	unsigned long irq = arch_local_irq_save();
 	check_refusal(GFP_KERNEL);
 	arch_local_irq_restore(irq);
+	/* Every defined policy bit is inert here: DMA/DMA32 pick no zone in a
+	 * private heap, RECLAIMABLE/MOVABLE/COMP pick no compaction class,
+	 * MEMALLOC/NOFAIL promise reserves the platform heap does not model,
+	 * THISNODE picks no node with NUMA off, and ACCOUNT charges a memcg
+	 * the guest does not run. They allocate like the plain request; the
+	 * blocking context, not the bits, decides. */
 	const gfp_t admitted[] = {
 		GFP_KERNEL, GFP_KERNEL | __GFP_ZERO, GFP_KERNEL | __GFP_NOWARN,
 		GFP_KERNEL | __GFP_NOMEMALLOC, GFP_KERNEL | __GFP_NORETRY,
-		GFP_KERNEL_ACCOUNT,
+		GFP_KERNEL_ACCOUNT, GFP_KERNEL | __GFP_DMA, GFP_KERNEL | __GFP_DMA32,
+		GFP_KERNEL | __GFP_RECLAIMABLE, GFP_KERNEL | __GFP_MOVABLE,
+		GFP_KERNEL | __GFP_COMP, GFP_KERNEL | __GFP_MEMALLOC,
+		GFP_KERNEL | __GFP_NOFAIL, GFP_KERNEL | __GFP_THISNODE,
 	};
 	unsigned int before = refusals;
 	for (size_t i = 0; i < ARRAY_SIZE(admitted); i++) {
@@ -398,6 +431,7 @@ static void nonblocking_policy_and_context(void)
 	const gfp_t flags[] = {
 		0, GFP_NOWAIT | __GFP_NOWARN | __GFP_NOMEMALLOC | __GFP_NORETRY,
 		GFP_NOWAIT | __GFP_ACCOUNT, GFP_ATOMIC,
+		GFP_NOWAIT | __GFP_RECLAIMABLE, GFP_NOWAIT | __GFP_MOVABLE,
 	};
 	for (size_t i = 0; i < ARRAY_SIZE(flags); i++) {
 		void *object = __kmalloc_noprof(128, flags[i]);
@@ -405,8 +439,6 @@ static void nonblocking_policy_and_context(void)
 		kfree(object);
 	}
 	assert(refusals == before);
-	check_refusal(GFP_NOWAIT | __GFP_RECLAIMABLE);
-	check_refusal(GFP_NOWAIT | __GFP_MOVABLE);
 	stela_test_heap_try_enable(false);
 	assert(!stela_linux_heap_try_available() && stela_linux_quiescent());
 	check_refusal(GFP_NOWAIT);
@@ -522,7 +554,7 @@ int main(void)
 	stela_linux_exit();
 	assert(stela_test_traps(strict_refusal));
 	assert(stela_test_traps(outside_owner));
-	printf("Linux kmalloc: actual alignment, zeroing, live isolation, bounds and explicit policy/context refusal\n");
+	printf("Linux kmalloc: actual alignment, zeroing, live isolation, bounds and explicit unknown-policy/context refusal\n");
 	return 0;
 }
 #endif
