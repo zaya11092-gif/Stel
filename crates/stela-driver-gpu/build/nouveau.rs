@@ -25,12 +25,6 @@ const OPEN: super::image::Open = &[
         "reopening a file without a VFS path",
         &["stela_linux_reopen_unowned_path"],
     ),
-    // Searches of a class's devices and of a device's children, which
-    // hwmon.c and backlight.c hold for I2C sensors and panel drivers.
-    (
-        "the driver core's device lists",
-        &["class_find_device", "device_find_child"],
-    ),
 ];
 
 /// The unit of nouveau's own `module_init`.
