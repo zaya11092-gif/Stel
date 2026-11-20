@@ -52,9 +52,11 @@ pub fn link(linux: &Linux, mut drivers: Vec<Driver>) {
             .chain(driver.extra.iter().map(|(_, captured)| captured.clone()))
     }));
     let mut expected = native::environment_units();
-    expected.extend(drivers.iter().flat_map(|driver| {
-        once(driver.spec).chain(driver.extra.iter().map(|(spec, _)| *spec))
-    }));
+    expected.extend(
+        drivers
+            .iter()
+            .flat_map(|driver| once(driver.spec).chain(driver.extra.iter().map(|(spec, _)| *spec))),
+    );
     let image = initcalls::source(
         &captured,
         Projection {
