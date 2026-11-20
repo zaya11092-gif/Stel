@@ -112,9 +112,16 @@ static dma_addr_t map_phys(struct device *dev, phys_addr_t physical, size_t size
 			   enum dma_data_direction direction, unsigned long attributes)
 {
 	const struct stela_linux_pci_function *function = of_device(dev);
+	dma_addr_t mapped = function->dma_map(function->context, physical, size, direction,
+					      attributes & DMA_ATTR_MMIO);
 
-	return function->dma_map(function->context, physical, size, direction,
-				 attributes & DMA_ATTR_MMIO);
+	/* The mapping service refuses a span it cannot pin or keep in the
+	 * registered extents and answers with the mapping error and no line
+	 * of its own, which left the coherent and scatter allocations of
+	 * xe's display and GuC bring-up failing invisibly; say each refusal. */
+	if (mapped == DMA_MAPPING_ERROR)
+		stela_linux_unsupported("a DMA mapping: the environment made none");
+	return mapped;
 }
 
 static void unmap_phys(struct device *dev, dma_addr_t address, size_t size,
