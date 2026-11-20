@@ -249,9 +249,12 @@ int device_for_each_child(struct device *parent, void *data, device_iter_t fn)
  * other, and its attribute groups are files nothing reads. Registering a
  * class therefore records nothing, as registering a bus does. A search of a
  * class's devices and of a device's children need the driver core's lists,
- * which do not exist; only a panel driver looks a backlight up by name or
- * node and only an I2C sensor with packet error checking looks for its
- * hwmon child, and the image holds neither. */
+ * which do not exist. xe's display code asks for both — the panel's
+ * backlight devices and the hardware monitor's children — and a hard trap
+ * here ended the boot with an #UD right after the tile line. Answering
+ * "none" is what the rest of the environment means by an absent device:
+ * the display code then skips what it was looking for, and the engine sets
+ * the panel's brightness itself through ACPI once the display runs. */
 int class_register(const struct class *class)
 {
 	return class && class->name ? 0 : -EINVAL;
@@ -262,10 +265,26 @@ void class_unregister(const struct class *class)
 	(void)class;
 }
 
-STELA_UNSUPPORTED(struct device *, class_find_device, const struct class *, const struct device *,
-		  const void *, device_match_t)
-STELA_UNSUPPORTED(struct device *, device_find_child, struct device *, const void *,
-		  device_match_t)
+struct device *class_find_device(const struct class *class, const struct device *start,
+				 const void *data, device_match_t match)
+{
+	(void)class;
+	(void)start;
+	(void)data;
+	(void)match;
+	stela_linux_unsupported("a search of a class's devices: it finds none");
+	return NULL;
+}
+
+struct device *device_find_child(struct device *parent, const void *data,
+				 device_match_t match)
+{
+	(void)parent;
+	(void)data;
+	(void)match;
+	stela_linux_unsupported("a search of a device's children: it finds none");
+	return NULL;
+}
 
 struct class *class_create(const char *name)
 {
