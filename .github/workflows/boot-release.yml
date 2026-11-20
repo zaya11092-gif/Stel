@@ -10,7 +10,10 @@
 #
 # This file's own path is the push trigger (workflow_dispatch exists but the
 # token cannot dispatch), so each rebuild touches the comment above.
-# Rebuild 2026-11-20: kmalloc shim admits every defined GFP policy bit.
+# Rebuild 2026-11-20 r6: xe's device-list searches answer none instead of
+# trapping, repeats of an unsupported operation report again, the page policy
+# admits the inert GFP bits like the slab mask, and refused DMA mappings and
+# out-of-BAR device mappings are reported where they were silent.
 name: Boot image release
 
 on:
