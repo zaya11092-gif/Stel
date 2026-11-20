@@ -104,14 +104,6 @@ const OPEN: super::image::Open = &[
         "reopening a file without a VFS path",
         &["stela_linux_reopen_unowned_path"],
     ),
-    // As nouveau's and amdgpu's lists have them, through hwmon.c and
-    // backlight.c: the display code's backlight devices and the hardware
-    // monitor core ask the driver core's device lists, which the
-    // environment traps.
-    (
-        "the driver core's device lists",
-        &["class_find_device", "device_find_child"],
-    ),
 ];
 
 /// The unit of xe's own `module_init`.
