@@ -228,11 +228,18 @@ bool stela_linux_page_request_basic(u32 gfp)
 	 * to reclaim means nothing to an allocator that does not reclaim. RAM has
 	 * one zone: __GFP_DMA32 only asks for what a device reaches, which its
 	 * DMA mapping checks against its mask and refuses. TTM's and nouveau's
-	 * allocations carry all of these. */
+	 * allocations carry all of these, and so does xe's display and GuC
+	 * bring-up, which additionally passes __GFP_HIGH (use the reserves),
+	 * __GFP_DMA and __GFP_MOVABLE. Those name nothing the private heap can
+	 * honor either: there are no reserves, one zone, and no compaction, so
+	 * the mobility classes are inert, and reachability is the DMA mapping's
+	 * check, not this one. The provider still refuses its own atomic
+	 * requests by their type, not by any of these bits. */
 	gfp_t allowed = __GFP_ZERO | __GFP_COMP | __GFP_NOWARN | __GFP_NOMEMALLOC |
 		__GFP_DIRECT_RECLAIM | __GFP_KSWAPD_RECLAIM | __GFP_IO | __GFP_FS |
 		__GFP_HIGHMEM | __GFP_DMA32 | __GFP_HARDWALL | __GFP_THISNODE |
-		__GFP_NORETRY | __GFP_RETRY_MAYFAIL;
+		__GFP_NORETRY | __GFP_RETRY_MAYFAIL | __GFP_MOVABLE | __GFP_DMA |
+		__GFP_HIGH;
 	if (!IS_ENABLED(CONFIG_MEMCG))
 		allowed |= __GFP_ACCOUNT;
 	return !(gfp & ~(__force u32)allowed);
