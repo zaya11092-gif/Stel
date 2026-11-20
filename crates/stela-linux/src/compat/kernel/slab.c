@@ -92,7 +92,7 @@ static bool request_supported(gfp_t flags)
 	 * sleeping allocation outside the quiescent phase would block the
 	 * native owner, and a nonblocking request needs the canonical heap. */
 	gfp_t allowed = GFP_USER | __GFP_HIGH | __GFP_ZERO | __GFP_NOWARN | __GFP_NOMEMALLOC |
-		__GFP_NORETRY | __GFP_RETRY_MAYFAIL | __GFP_ACCOUNT | __GFP_ATOMIC | __GFP_DMA |
+		__GFP_NORETRY | __GFP_RETRY_MAYFAIL | __GFP_ACCOUNT | __GFP_DMA |
 		__GFP_DMA32 | __GFP_RECLAIMABLE | __GFP_MOVABLE | __GFP_COMP | __GFP_MEMALLOC |
 		__GFP_NOFAIL | __GFP_THISNODE;
 	bool quiescent = stela_linux_quiescent();
