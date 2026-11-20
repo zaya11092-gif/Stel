@@ -683,8 +683,14 @@ impl Platform for Host {
 
     fn unsupported(&self, operation: &CStr) {
         let operation = operation.to_str().unwrap_or("(not UTF-8)");
-        if self.reported.borrow_mut().insert(operation.to_owned()) {
+        let first = self.reported.borrow_mut().insert(operation.to_owned());
+        if first {
             self.report(format_args!("unsupported: {operation}"));
+        } else {
+            // A repeat used to stay silent, which hid refusals that kept
+            // firing during the GPU's bring-up and made the boot look wedged
+            // where it was only refused again; say each one too.
+            self.report(format_args!("unsupported again: {operation}"));
         }
     }
 
@@ -716,6 +722,12 @@ impl Platform for Host {
             .iter()
             .any(|bar| bar.start <= physical && end <= bar.end)
         {
+            // An ioremap outside the claimed BARs used to return NULL with
+            // no line, which left the display code failing invisibly; say
+            // each one.
+            self.report(format_args!(
+                "device memory mapping of physical {physical:#x} size {size:#x}: outside the BARs"
+            ));
             return None;
         }
         let pages = size / PAGE as usize;
