@@ -875,7 +875,7 @@ impl NativeBackend {
         };
         // Dropping a partly built backend destroys what was created.
         let kernels = kernels?;
-        backend.create_layout(family)?;
+        backend.create_layout(family, loader.log)?;
         // SAFETY: the device is live and `snapshot` describes its GPU.
         backend.store = unsafe {
             pipeline_store::Persisted::open(&backend.device, &backend.snapshot.identity, loader.log)
@@ -1001,7 +1001,7 @@ impl NativeBackend {
 
     /// The heap's set layout, pool and set with its null descriptors, the
     /// pipeline layout and the command pool.
-    fn create_layout(&mut self, family: u32) -> Result<()> {
+    fn create_layout(&mut self, family: u32, log: fn(&str)) -> Result<()> {
         let counts = HeapLayout::new(&self.snapshot.limits).counts;
         let bindings = objects::heap_bindings(&counts);
         let flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND
@@ -1030,8 +1030,10 @@ impl NativeBackend {
         // SAFETY: as above.
         let pool = unsafe { self.device.create_descriptor_pool(&info, None) };
         if pool.is_err() {
+            let counts: alloc::vec::Vec<u32> =
+                sizes.iter().map(|size| size.descriptor_count).collect();
             log(&format!(
-                "Metal descriptor pool refused: max_sets=1 sizes={sizes:?}"
+                "Metal descriptor pool refused: max_sets=1 counts={counts:?}"
             ));
         }
         self.heap.pool = pool.map_err(failure)?;

@@ -16,7 +16,8 @@
 # Rebuild 2026-11-21 r8: the Metal descriptor heap's arrays cap at what one
 # descriptor pool's host block can hold, where ANV's update-after-bind
 # maximums asked a vk_object_zalloc the boot heap could not carve, and xe's
-# device-query refusals name themselves and their query id.
+# device-query refusals name themselves and their query id. Rebuild 2: the
+# pool's refusal names its descriptor counts through the loader's log.
 name: Boot image release
 
 on:
