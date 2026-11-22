@@ -13,6 +13,10 @@
 # Rebuild 2026-11-20 r6b: nouveau's and amdgpu's builds stop listing the
 # driver core's device searches as open imports, like xe's already does, now
 # that the environment answers them with none.
+# Rebuild 2026-11-21 r8: the Metal descriptor heap's arrays cap at what one
+# descriptor pool's host block can hold, where ANV's update-after-bind
+# maximums asked a vk_object_zalloc the boot heap could not carve, and xe's
+# device-query refusals name themselves and their query id.
 name: Boot image release
 
 on:

@@ -1028,8 +1028,13 @@ impl NativeBackend {
             .max_sets(1)
             .pool_sizes(&sizes);
         // SAFETY: as above.
-        self.heap.pool =
-            unsafe { self.device.create_descriptor_pool(&info, None) }.map_err(failure)?;
+        let pool = unsafe { self.device.create_descriptor_pool(&info, None) };
+        if pool.is_err() {
+            log(&format!(
+                "Metal descriptor pool refused: max_sets=1 sizes={sizes:?}"
+            ));
+        }
+        self.heap.pool = pool.map_err(failure)?;
         let layouts = [self.heap.layout];
         let info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.heap.pool)

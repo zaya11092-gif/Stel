@@ -215,8 +215,17 @@ fn driver(command: u32) -> Option<&'static str> {
 }
 
 #[cfg(not(feature = "radv"))]
-fn driver(_: u32) -> Option<&'static str> {
-    None
+fn driver(command: u32) -> Option<&'static str> {
+    // xe's commands (`uapi/drm/xe_drm.h`'s `DRM_IOCTL_XE_*`), named when the
+    // environment's xe refuses one the image's ANV asks.
+    #[cfg(feature = "anv")]
+    let xe = match command {
+        0x00 => Some("XE_DEVICE_QUERY"),
+        _ => None,
+    };
+    #[cfg(not(feature = "anv"))]
+    let xe = None;
+    xe
 }
 
 /// What the call asked for, for the driver commands whose refusal a Vulkan
@@ -284,5 +293,15 @@ fn describe(number: u32, input: &Input, out: &mut alloc::string::String) {
     };
 }
 
-#[cfg(not(feature = "radv"))]
+/// The xe command's fields, which ANV's refusals report.
+#[cfg(all(not(feature = "radv"), feature = "anv"))]
+fn describe(number: u32, input: &Input, out: &mut alloc::string::String) {
+    use core::fmt::Write;
+    if number == COMMAND_BASE {
+        // `struct drm_xe_device_query`: extensions, then the u32 query id.
+        write!(out, " query={}", input.u32(8)).ok();
+    }
+}
+
+#[cfg(not(any(feature = "radv", feature = "anv")))]
 fn describe(_: u32, _: &Input, _: &mut alloc::string::String) {}

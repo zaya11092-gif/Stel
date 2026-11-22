@@ -1066,17 +1066,26 @@ pub struct HeapLayout {
 }
 
 impl HeapLayout {
+    /// The image arrays' caps: ANV's update-after-bind maximums run in the
+    /// millions, and one descriptor pool's host block of them cannot carve.
+    const ARRAY_CAP: u32 = 1 << 16;
+    /// The samplers' cap, which Metal binds far fewer of.
+    const SAMPLER_CAP: u32 = 8192;
+
     pub fn new(limits: &Limits) -> Self {
         let sampled = limits
             .max_descriptor_set_update_after_bind_sampled_images
-            .min(limits.max_per_stage_update_after_bind_sampled_images);
+            .min(limits.max_per_stage_update_after_bind_sampled_images)
+            .min(Self::ARRAY_CAP);
         let storage = limits
             .max_descriptor_set_update_after_bind_storage_images
-            .min(limits.max_per_stage_update_after_bind_storage_images);
+            .min(limits.max_per_stage_update_after_bind_storage_images)
+            .min(Self::ARRAY_CAP);
         let samplers = limits
             .max_descriptor_set_update_after_bind_samplers
             .min(limits.max_per_stage_update_after_bind_samplers)
-            .min(limits.max_sampler_allocation_count);
+            .min(limits.max_sampler_allocation_count)
+            .min(Self::SAMPLER_CAP);
         // Storage indices leave the high half's flag and level count bits free.
         let storage = storage.min(ResourceId::MAX_STORAGE);
         Self {
