@@ -38,6 +38,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The fetched Linux, Mesa and LLVM sources, the host tools installed
+      # under .tools/gpu, and the SPIRV builds installed into host-deps, so
+      # each rebuild only recompiles what the new commit changed. The sources
+      # alone stay under GitHub's cache budget; the target directory, whose
+      # compiled trees run far past it, keeps rebuilding from them.
+      - name: Cache the fetched sources and host tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            host-deps
+            .tools/gpu
+            third_party/linux
+            third_party/mesa
+            third_party/llvm
+            third_party/libdrm
+          key: boot-build-v1-${{ github.sha }}
+          restore-keys: boot-build-v1-
+
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
