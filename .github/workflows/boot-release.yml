@@ -18,6 +18,8 @@
 # maximums asked a vk_object_zalloc the boot heap could not carve, and xe's
 # device-query refusals name themselves and their query id. Rebuild 2: the
 # pool's refusal names its descriptor counts through the loader's log.
+# Rebuild 3: an unserved GPU client fault names which of its three EFAULT
+# exits refused it, the mapping it found and the pages it covers.
 name: Boot image release
 
 on:

@@ -546,11 +546,23 @@ unsafe fn perform(gpu: &Installed, operation: Operation) -> i64 {
                 let mappings = gpu.mappings.borrow();
                 let found = mappings.range(..=address).next_back();
                 let Some((&start, &(mapping, pages))) = found else {
+                    output::arguments(format_args!(
+                        "GPU client fault {address:#x} write={write}: no DRM mapping at or \
+                         below it\n"
+                    ));
                     return EFAULT;
                 };
-                if address >= start + pages as u64 * PAGE
-                    || !client::fill_around(mapping, address, write)
-                {
+                if address >= start + pages as u64 * PAGE {
+                    output::arguments(format_args!(
+                        "GPU client fault {address:#x} write={write}: outside its mapping \
+                         {start:#x}+{pages} pages\n"
+                    ));
+                    return EFAULT;
+                }
+                if !client::fill_around(mapping, address, write) {
+                    output::arguments(format_args!(
+                        "GPU client fault {address:#x} write={write}: fill_around refused\n"
+                    ));
                     return EFAULT;
                 }
                 0
