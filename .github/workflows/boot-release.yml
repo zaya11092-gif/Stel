@@ -20,6 +20,8 @@
 # pool's refusal names its descriptor counts through the loader's log.
 # Rebuild 3: an unserved GPU client fault names which of its three EFAULT
 # exits refused it, the mapping it found and the pages it covers.
+# Rebuild 4: the cache keeps the host tools and SPIRV deps only, where the
+# submodule sources' gitfiles left a restored tree xtask could not check out.
 name: Boot image release
 
 on:
@@ -41,21 +43,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The fetched Linux, Mesa and LLVM sources, the host tools installed
-      # under .tools/gpu, and the SPIRV builds installed into host-deps, so
-      # each rebuild only recompiles what the new commit changed. The sources
-      # alone stay under GitHub's cache budget; the target directory, whose
-      # compiled trees run far past it, keeps rebuilding from them.
-      - name: Cache the fetched sources and host tools
+      # The host tools installed under .tools/gpu and the SPIRV builds
+      # installed into host-deps, so each rebuild skips their setup. The
+      # fetched sources under third_party stay out: they are git submodules,
+      # whose gitfiles point into the checkout's .git that the cache does
+      # not carry, and a restored tree leaves xtask's sparse-checkout on a
+      # repository git cannot find.
+      - name: Cache the host tools
         uses: actions/cache@v4
         with:
           path: |
             host-deps
             .tools/gpu
-            third_party/linux
-            third_party/mesa
-            third_party/llvm
-            third_party/libdrm
           key: boot-build-v1-${{ github.sha }}
           restore-keys: boot-build-v1-
 
