@@ -265,7 +265,9 @@ enum Operation {
         offset: u64,
         size: usize,
     },
-    Unmap(u64),
+    /// Ends the mapping at `address`: whole with a `size` of zero, else the
+    /// `size` bytes Linux's `munmap` reaches, a front or a back part of it.
+    Unmap { address: u64, size: usize },
     Fault {
         address: u64,
         write: bool,
@@ -396,6 +398,11 @@ static REQUESTS: AtomicPtr<Request> = AtomicPtr::new(ptr::null_mut());
 /// The mappings clients hold. A fault with none is no client's, so it reports
 /// on the spot instead of waiting for the boot PE, which may be waiting for it.
 static MAPPINGS: AtomicUsize = AtomicUsize::new(0);
+/// The partial unmaps of a mapping clients made, of which the first
+/// [`PARTS_SHOWN`] are said: ANV maps a BO out of a slab with the kernel's one
+/// mmap offset, then unmaps the slab's pages before the BO.
+static PARTS: AtomicU32 = AtomicU32::new(0);
+const PARTS_SHOWN: u32 = 8;
 
 fn post(request: &Request) {
     let this = ptr::from_ref(request).cast_mut();
@@ -530,15 +537,68 @@ unsafe fn perform(gpu: &Installed, operation: Operation) -> i64 {
                 refused::map(fd, offset, size, result);
                 result
             }
-            Operation::Unmap(address) => {
-                let Some((mapping, pages)) = gpu.mappings.borrow_mut().remove(&address) else {
+            Operation::Unmap { address, size } => {
+                let mut mappings = gpu.mappings.borrow_mut();
+                let Some((&start, &(mapping, pages))) = mappings.range(..=address).next_back()
+                else {
                     return EFAULT;
                 };
-                client::unmap(mapping);
-                MAPPINGS.fetch_sub(1, Ordering::Relaxed);
+                let end = start + pages as u64 * PAGE;
+                if address >= end {
+                    return EFAULT;
+                }
+                // Linux's `munmap` rounds its length up to whole pages. None
+                // given takes the whole mapping.
+                let to = match (size as u64).checked_next_multiple_of(PAGE) {
+                    Some(0) | None => end,
+                    Some(bytes) => address.saturating_add(bytes).min(end),
+                };
+                if address == start && to == end {
+                    mappings.remove(&start);
+                    drop(mappings);
+                    client::unmap(mapping);
+                    MAPPINGS.fetch_sub(1, Ordering::Relaxed);
+                    // A processor that kept the translation keeps the addresses too.
+                    if gpu.window.remove(start, pages) {
+                        gpu.window.release(start, pages);
+                    }
+                    return 0;
+                }
+                // The rest of the mapping keeps its pages and their addresses,
+                // which one range cut out of its middle would leave in two.
+                if address != start && to != end {
+                    output::arguments(format_args!(
+                        "GPU client unmap of {size} bytes at {address:#x} cuts the middle of its \
+                         mapping {start:#x}..{end:#x}: refused\n"
+                    ));
+                    return EINVAL;
+                }
+                let part = ((to - address) / PAGE) as usize;
+                drop(mappings);
+                // SAFETY: the function's; on a task, as every call here, and no
+                // fault on the range is outstanding, which the client no longer
+                // uses.
+                let unmapped =
+                    unsafe { client::unmap_part(mapping, address, (to - address) as usize) };
+                if let Err(error) = unmapped {
+                    return error.into();
+                }
+                let kept = if address == start { to } else { start };
+                let count = pages - part;
+                let mut mappings = gpu.mappings.borrow_mut();
+                mappings.remove(&start);
+                mappings.insert(kept, (mapping, count));
+                drop(mappings);
                 // A processor that kept the translation keeps the addresses too.
-                if gpu.window.remove(address, pages) {
-                    gpu.window.release(address, pages);
+                if gpu.window.remove(address, part) {
+                    gpu.window.release(address, part);
+                }
+                if PARTS.fetch_add(1, Ordering::Relaxed) < PARTS_SHOWN {
+                    output::arguments(format_args!(
+                        "GPU client unmap of {size} bytes at the {side} of its mapping \
+                         {start:#x} of {pages} pages: {count} pages stay mapped\n",
+                        side = if address == start { "front" } else { "back" }
+                    ));
                 }
                 0
             }
@@ -946,7 +1006,7 @@ fn request_code(operation: &Operation) -> u32 {
         Operation::Duplicate(_) => HostCall::Duplicate,
         Operation::Device(_) => HostCall::Device,
         Operation::Map { .. } => HostCall::Map,
-        Operation::Unmap(_) => HostCall::Unmap,
+        Operation::Unmap { .. } => HostCall::Unmap,
         Operation::Fault { .. } => HostCall::Fault,
         Operation::Thread(_) => HostCall::Thread,
         Operation::Wake => HostCall::Wake,
@@ -1682,9 +1742,12 @@ pub(super) fn map(fd: c_int, offset: u64, size: usize) -> Option<NonNull<u8>> {
     }
 }
 
-/// Removes the mapping [`map`] gave at `address`.
+/// Removes the mapping [`map`] gave at `address`, whole.
 pub(super) fn unmap(address: NonNull<u8>) {
-    let result = submit(Operation::Unmap(address.as_ptr() as u64));
+    let result = submit(Operation::Unmap {
+        address: address.as_ptr() as u64,
+        size: 0,
+    });
     if result != 0 {
         output::arguments(format_args!("GPU unmap of {address:p} refused: {result}\n"));
     }
@@ -2032,13 +2095,19 @@ extern "C" fn stela_libc_drm_mmap(fd: c_int, offset: u64, size: usize) -> *mut c
     submit(Operation::Map { fd, offset, size }) as *mut c_void
 }
 
+/// Ends the DRM mapping at `address` as far as `size` bytes reach, as Linux's
+/// `munmap` does: 1 when a mapping was there, 0 when none was and the
+/// address is the C library's own to free, else a negative errno.
 #[unsafe(no_mangle)]
-extern "C" fn stela_libc_drm_munmap(address: *mut c_void, _size: usize) -> c_int {
+extern "C" fn stela_libc_drm_munmap(address: *mut c_void, size: usize) -> c_int {
     let mapped = installed().is_some_and(|gpu| gpu.window.contains(address as u64));
     if !mapped {
         return 0;
     }
-    let result = submit(Operation::Unmap(address as u64));
+    let result = submit(Operation::Unmap {
+        address: address as u64,
+        size,
+    });
     if result < 0 { result as c_int } else { 1 }
 }
 

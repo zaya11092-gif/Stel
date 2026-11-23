@@ -40,6 +40,7 @@ unsafe extern "C" {
         mapping: *mut *mut c_void,
     ) -> c_int;
     fn stela_linux_munmap(mapping: *mut c_void);
+    fn stela_linux_munmap_part(mapping: *mut c_void, address: u64, size: usize) -> c_int;
     fn stela_linux_fill_around(mapping: *mut c_void, address: u64, write: bool) -> bool;
     fn stela_linux_wait(word: *const c_uint, value: c_uint, nanoseconds: u64);
     fn stela_linux_wake();
@@ -148,6 +149,20 @@ pub unsafe fn map(fd: c_int, address: u64, size: usize, offset: u64) -> Result<M
 pub unsafe fn unmap(mapping: Mapping) {
     // SAFETY: the module's contract and this function's.
     unsafe { stela_linux_munmap(mapping.0) };
+}
+
+/// Unmaps `[address, address + size)` of `mapping`, which is a front or a back
+/// part of it: as Linux's `munmap` of part of a mapping leaves the rest.
+///
+/// # Safety
+/// See the module. All outstanding faults on `mapping` have returned, and the
+/// range is no longer used.
+pub unsafe fn unmap_part(mapping: Mapping, address: u64, size: usize) -> Result<(), Errno> {
+    // SAFETY: the module's contract and this function's.
+    match unsafe { stela_linux_munmap_part(mapping.0, address, size) } {
+        0 => Ok(()),
+        error => Err(error),
+    }
 }
 
 /// Install the page at `address`, on the client's first touch or after

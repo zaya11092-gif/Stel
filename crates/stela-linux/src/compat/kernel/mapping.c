@@ -301,6 +301,41 @@ void stela_linux_munmap(struct stela_linux_mapping *mapping)
 	kfree(mapping);
 }
 
+/* Unmaps [address, address + size) of the mapping, which is a front or a
+ * back part of it: as Linux's munmap of part of a mapping leaves the rest,
+ * whose pages keep their addresses. ANV maps a BO out of a slab with the
+ * kernel's one mmap offset of the whole slab, then unmaps the slab's pages
+ * before the BO. 0, or -EINVAL for a range that is neither a front nor a
+ * back part of the mapping.
+ */
+int stela_linux_munmap_part(struct stela_linux_mapping *mapping, unsigned long address,
+			    size_t size)
+{
+	struct vm_area_struct *vma = &mapping->vma;
+
+	if (!size || address < vma->vm_start || size > vma->vm_end - address ||
+	    (address != vma->vm_start && address + size != vma->vm_end))
+		return -EINVAL;
+	struct file *file = vma->vm_file;
+
+	i_mmap_lock_write(file->f_mapping);
+	unmap_client(mapping, address, size);
+	mapped_remove(vma, &file->f_mapping->i_mmap);
+	if (address == vma->vm_start) {
+		unsigned long pages = size >> PAGE_SHIFT;
+
+		WRITE_ONCE(mapping->filled, max(READ_ONCE(mapping->filled), address + size));
+		vma->vm_pgoff += pages;
+		vma->vm_start += pages << PAGE_SHIFT;
+	} else {
+		vma->vm_end = address;
+		WRITE_ONCE(mapping->filled, min(READ_ONCE(mapping->filled), address));
+	}
+	mapped_insert(vma, &file->f_mapping->i_mmap);
+	i_mmap_unlock_write(file->f_mapping);
+	return 0;
+}
+
 static vm_fault_t install_file_page(struct stela_linux_mapping *mapping, struct vm_fault *vmf,
 				    vm_fault_t result, unsigned long sequence, bool write)
 {

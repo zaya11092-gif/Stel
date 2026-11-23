@@ -22,6 +22,10 @@
 # exits refused it, the mapping it found and the pages it covers.
 # Rebuild 4: the cache keeps the host tools and SPIRV deps only, where the
 # submodule sources' gitfiles left a restored tree xtask could not check out.
+# Rebuild 5: a client's munmap of part of a mapping trims that part only,
+# where ANV maps a BO out of a slab with the kernel's one mmap offset and
+# unmaps the slab's pages before the BO, whose whole-mapping unmap left its
+# bo->map dangling past the first submission.
 name: Boot image release
 
 on:
