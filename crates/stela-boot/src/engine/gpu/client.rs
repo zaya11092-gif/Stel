@@ -267,7 +267,10 @@ enum Operation {
     },
     /// Ends the mapping at `address`: whole with a `size` of zero, else the
     /// `size` bytes Linux's `munmap` reaches, a front or a back part of it.
-    Unmap { address: u64, size: usize },
+    Unmap {
+        address: u64,
+        size: usize,
+    },
     Fault {
         address: u64,
         write: bool,
